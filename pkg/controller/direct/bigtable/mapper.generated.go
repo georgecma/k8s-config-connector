@@ -20,10 +20,10 @@
 package bigtable
 
 import (
-	pb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
 	krmv1alpha1 "github.com/GoogleCloudPlatform/k8s-config-connector/apis/bigtable/v1alpha1"
 	krmv1beta1 "github.com/GoogleCloudPlatform/k8s-config-connector/apis/bigtable/v1beta1"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct"
+	pb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
 )
 
 func AppProfile_DataBoostIsolationReadOnly_FromProto(mapCtx *direct.MapContext, in *pb.AppProfile_DataBoostIsolationReadOnly) *krmv1beta1.AppProfile_DataBoostIsolationReadOnly {
@@ -180,7 +180,6 @@ func BigtableAppProfileObservedState_FromProto(mapCtx *direct.MapContext, in *pb
 	// MISSING: Name
 	// MISSING: Etag
 	// MISSING: Priority
-	// MISSING: DataBoostIsolationReadOnly
 	return out
 }
 func BigtableAppProfileObservedState_ToProto(mapCtx *direct.MapContext, in *krmv1beta1.BigtableAppProfileObservedState) *pb.AppProfile {
@@ -191,7 +190,6 @@ func BigtableAppProfileObservedState_ToProto(mapCtx *direct.MapContext, in *krmv
 	// MISSING: Name
 	// MISSING: Etag
 	// MISSING: Priority
-	// MISSING: DataBoostIsolationReadOnly
 	return out
 }
 func BigtableAuthorizedViewObservedState_FromProto(mapCtx *direct.MapContext, in *pb.AuthorizedView) *krmv1alpha1.BigtableAuthorizedViewObservedState {
@@ -208,6 +206,50 @@ func BigtableAuthorizedViewObservedState_ToProto(mapCtx *direct.MapContext, in *
 	}
 	out := &pb.AuthorizedView{}
 	// MISSING: Name
+	return out
+}
+func BigtableLogicalViewObservedState_FromProto(mapCtx *direct.MapContext, in *pb.LogicalView) *krmv1beta1.BigtableLogicalViewObservedState {
+	if in == nil {
+		return nil
+	}
+	out := &krmv1beta1.BigtableLogicalViewObservedState{}
+	// MISSING: Name
+	// MISSING: Query
+	// MISSING: Etag
+	// MISSING: DeletionProtection
+	return out
+}
+func BigtableLogicalViewObservedState_ToProto(mapCtx *direct.MapContext, in *krmv1beta1.BigtableLogicalViewObservedState) *pb.LogicalView {
+	if in == nil {
+		return nil
+	}
+	out := &pb.LogicalView{}
+	// MISSING: Name
+	// MISSING: Query
+	// MISSING: Etag
+	// MISSING: DeletionProtection
+	return out
+}
+func BigtableLogicalViewSpec_FromProto(mapCtx *direct.MapContext, in *pb.LogicalView) *krmv1beta1.BigtableLogicalViewSpec {
+	if in == nil {
+		return nil
+	}
+	out := &krmv1beta1.BigtableLogicalViewSpec{}
+	// MISSING: Name
+	// MISSING: Query
+	// MISSING: Etag
+	// MISSING: DeletionProtection
+	return out
+}
+func BigtableLogicalViewSpec_ToProto(mapCtx *direct.MapContext, in *krmv1beta1.BigtableLogicalViewSpec) *pb.LogicalView {
+	if in == nil {
+		return nil
+	}
+	out := &pb.LogicalView{}
+	// MISSING: Name
+	// MISSING: Query
+	// MISSING: Etag
+	// MISSING: DeletionProtection
 	return out
 }
 func EncryptionInfo_FromProto(mapCtx *direct.MapContext, in *pb.EncryptionInfo) *krmv1beta1.EncryptionInfo {
