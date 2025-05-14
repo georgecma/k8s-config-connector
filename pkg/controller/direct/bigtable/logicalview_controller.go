@@ -18,26 +18,20 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	krm "github.com/GoogleCloudPlatform/k8s-config-connector/apis/bigtable/v1beta1"
-	refs "github.com/GoogleCloudPlatform/k8s-config-connector/apis/refs/v1beta1"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/config"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct"
-	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct/common"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct/directbase"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct/registry"
 
-	// TODO(contributor): Update the import with the google cloud client
-	gcp "cloud.google.com/go/bigtable/apiv1"
-
-	// TODO(contributor): Update the import with the google cloud client api protobuf
-	bigtablepb "cloud.google.com/go/bigtable/v2/bigtablepb"
+	gcp "cloud.google.com/go/bigtable"
+	bigtablepb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
 	"google.golang.org/api/option"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -56,17 +50,24 @@ type modelLogicalView struct {
 	config config.ControllerConfig
 }
 
-func (m *modelLogicalView) client(ctx context.Context) (*gcp.Client, error) {
+func (m *modelLogicalView) client(ctx context.Context, parentProject string) (*gcp.InstanceAdminClient, error) {
 	var opts []option.ClientOption
-	opts, err := m.config.RESTClientOptions()
+	opts, err := m.config.GRPCClientOptions()
+	gcpClient, err := gcp.NewInstanceAdminClient(ctx, parentProject, opts...)
 	if err != nil {
-		return nil, err
-	}
-	gcpClient, err := gcp.NewRESTClient(ctx, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("building LogicalView client: %w", err)
+		return nil, fmt.Errorf("building BigtableLogicalView client: %w", err)
 	}
 	return gcpClient, err
+}
+
+// This helper function converts a fully qualified project like "projects/myproject" into
+// the unqualified project ID, like "myproject".
+func (m *modelLogicalView) getProjectId(fullyQualifiedProject string) (string, error) {
+	tokens := strings.Split(fullyQualifiedProject, "/")
+	if len(tokens) != 2 || tokens[0] != "projects" {
+		return "", fmt.Errorf("Unexpected format for LogicalView Parent Project ID=%q was not known (expected projects/{projectID})", fullyQualifiedProject)
+	}
+	return tokens[1], nil
 }
 
 func (m *modelLogicalView) AdapterForObject(ctx context.Context, reader client.Reader, u *unstructured.Unstructured) (directbase.Adapter, error) {
@@ -80,14 +81,19 @@ func (m *modelLogicalView) AdapterForObject(ctx context.Context, reader client.R
 		return nil, err
 	}
 
-	// Get bigtable GCP client
-	gcpClient, err := m.client(ctx)
+	// Get bigtable instance admin GCP client. Accepts the non-fully qualified project ID.
+	// E.G. "myproject" instead of "projects/myproject"
+	parentProjectId, err := m.getProjectId(id.Parent().ParentString())
 	if err != nil {
 		return nil, err
 	}
+	instanceAdminClient, err := m.client(ctx, parentProjectId)
+	if err != nil {
+		return nil, fmt.Errorf("error creating instance admin client: %w", err)
+	}
 	return &LogicalViewAdapter{
 		id:        id,
-		gcpClient: gcpClient,
+		gcpClient: instanceAdminClient,
 		desired:   obj,
 	}, nil
 }
@@ -99,7 +105,7 @@ func (m *modelLogicalView) AdapterForURL(ctx context.Context, url string) (direc
 
 type LogicalViewAdapter struct {
 	id        *krm.LogicalViewIdentity
-	gcpClient *gcp.Client
+	gcpClient *gcp.InstanceAdminClient
 	desired   *krm.BigtableLogicalView
 	actual    *bigtablepb.LogicalView
 }
@@ -112,18 +118,21 @@ var _ directbase.Adapter = &LogicalViewAdapter{}
 // Return a non-nil error requeues the requests.
 func (a *LogicalViewAdapter) Find(ctx context.Context) (bool, error) {
 	log := klog.FromContext(ctx)
-	log.V(2).Info("getting LogicalView", "name", a.id)
+	log.V(2).Info("getting BigtableAppProfile", "name", a.id)
 
-	req := &bigtablepb.GetLogicalViewRequest{Name: a.id.String()}
-	logicalviewpb, err := a.gcpClient.GetLogicalView(ctx, req)
+	logicalViewInfo, err := a.gcpClient.LogicalViewInfo(ctx, a.id.ParentInstanceIdString(), a.id.ID())
 	if err != nil {
 		if direct.IsNotFound(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("getting LogicalView %q: %w", a.id, err)
+		return false, fmt.Errorf("getting BigtableAppProfile %q: %w", a.id, err)
 	}
 
-	a.actual = logicalviewpb
+	a.actual = &bigtablepb.LogicalView{
+		Name:  a.id.String(),
+		Query: logicalViewInfo.Query,
+		// TODO: Add DeletionProtection once that proto is published.
+	}
 	return true, nil
 }
 
@@ -139,28 +148,35 @@ func (a *LogicalViewAdapter) Create(ctx context.Context, createOp *directbase.Cr
 		return mapCtx.Err()
 	}
 
-	// TODO(contributor): Complete the gcp "CREATE" or "INSERT" request.
-	req := &bigtablepb.CreateLogicalViewRequest{
-		Parent:      a.id.Parent().String(),
-		LogicalView: resource,
+	logicalViewInfo := &gcp.LogicalViewInfo{
+		LogicalViewID: a.id.ID(),
+		Query:         resource.Query,
+		// TODO: Add this once the feature is enabled.
+		// DeletionProtection: resource.DeletionProtection,
 	}
-	op, err := a.gcpClient.CreateLogicalView(ctx, req)
+	err := a.gcpClient.CreateLogicalView(ctx, a.id.ID(), logicalViewInfo)
 	if err != nil {
 		return fmt.Errorf("creating LogicalView %s: %w", a.id, err)
-	}
-	created, err := op.Wait(ctx)
-	if err != nil {
-		return fmt.Errorf("LogicalView %s waiting creation: %w", a.id, err)
 	}
 	log.V(2).Info("successfully created LogicalView", "name", a.id)
 
 	status := &krm.BigtableLogicalViewStatus{}
-	status.ObservedState = BigtableLogicalViewObservedState_FromProto(mapCtx, created)
-	if mapCtx.Err() != nil {
-		return mapCtx.Err()
-	}
+	// TODO: Add Observed State
+	// status.ObservedState = BigtableLogicalViewObservedState_FromProto(mapCtx, created)
+	// if mapCtx.Err() != nil {
+	// 	return mapCtx.Err()
+	// }
 	status.ExternalRef = direct.LazyPtr(a.id.String())
-	return createOp.UpdateStatus(ctx, status, nil)
+	status.Name = direct.LazyPtr(a.id.String())
+	if err := createOp.UpdateStatus(ctx, status, nil); err != nil {
+		return err
+	}
+
+	// Write resourceID into spec.
+	if err := unstructured.SetNestedField(createOp.GetUnstructured().Object, a.id.ID(), "spec", "resourceID"); err != nil {
+		return fmt.Errorf("error setting spec.resourceID: %w", err)
+	}
+	return nil
 }
 
 // Update updates the resource in GCP based on `spec` and update the Config Connector object `status` based on the GCP response.
@@ -174,56 +190,43 @@ func (a *LogicalViewAdapter) Update(ctx context.Context, updateOp *directbase.Up
 		return mapCtx.Err()
 	}
 
-	paths := make(sets.Set[string])
-	// Option 1: This option is good for proto that has `field_mask` for output-only, immutable, required/optional.
-	// TODO(contributor): If choosing this option, remove the "Option 2" code.
-	{
-		var err error
-		paths, err = common.CompareProtoMessage(desiredPb, a.actual, common.BasicDiff)
-		if err != nil {
-			return err
-		}
+	updateMask := &fieldmaskpb.FieldMask{}
+	if !reflect.DeepEqual(a.desired.Spec.Query, a.actual.Query) {
+		updateMask.Paths = append(updateMask.Paths, "query")
 	}
+	// TODO: Add deletion protection field.
 
-	// Option 2: manually add all mutable fields.
-	// TODO(contributor): If choosing this option, remove the "Option 1" code.
-	{
-		if !reflect.DeepEqual(a.desired.Spec.DisplayName, a.actual.DisplayName) {
-			paths = paths.Insert("display_name")
-		}
-	}
-
-	updated := a.actual
-	if len(paths) == 0 {
+	if len(updateMask.Paths) == 0 {
 		log.V(2).Info("no field needs update", "name", a.id)
 	} else {
-		log.V(2).Info("fields need update", "name", a.id, "paths", paths)
-		updateMask := &fieldmaskpb.FieldMask{
-			Paths: sets.List(paths),
-		}
+		log.V(2).Info("fields need update", "name", a.id, "paths", updateMask.Paths)
 
-		// TODO(contributor): Complete the gcp "UPDATE" or "PATCH" request.
-		req := &bigtablepb.UpdateLogicalViewRequest{
-			Name:        a.id.String(),
-			UpdateMask:  updateMask,
-			LogicalView: desiredPb,
+		desiredlogicalview := gcp.LogicalViewInfo{
+			LogicalViewID: a.id.ID(),
+			Query:         desiredPb.Query,
 		}
-		op, err := a.gcpClient.UpdateLogicalView(ctx, req)
+		err := a.gcpClient.UpdateLogicalView(ctx, a.id.ParentString(), desiredlogicalview)
 		if err != nil {
 			return fmt.Errorf("updating LogicalView %s: %w", a.id, err)
 		}
-		updated, err = op.Wait(ctx)
-		if err != nil {
-			return fmt.Errorf("LogicalView %s waiting update: %w", a.id, err)
-		}
 		log.V(2).Info("successfully updated LogicalView", "name", a.id)
+		status := &krm.BigtableLogicalViewStatus{}
+		status.Name = direct.LazyPtr(a.id.String())
+		// TODO: Add ObservedState
+		// status.ObservedState = LogicalViewObservedState_FromProto(mapCtx, updated)
+		// if mapCtx.Err() != nil {
+		// 	return mapCtx.Err()
+		// }
+		return updateOp.UpdateStatus(ctx, status, nil)
 	}
 
 	status := &krm.BigtableLogicalViewStatus{}
-	status.ObservedState = BigtableLogicalViewObservedState_FromProto(mapCtx, updated)
-	if mapCtx.Err() != nil {
-		return mapCtx.Err()
-	}
+	status.Name = direct.LazyPtr(a.id.String())
+	// TODO: Add ObservedState
+	// status.ObservedState = LogicalViewObservedState_FromProto(mapCtx, updated)
+	// if mapCtx.Err() != nil {
+	// 	return mapCtx.Err()
+	// }
 	return updateOp.UpdateStatus(ctx, status, nil)
 }
 
@@ -236,12 +239,13 @@ func (a *LogicalViewAdapter) Export(ctx context.Context) (*unstructured.Unstruct
 
 	obj := &krm.BigtableLogicalView{}
 	mapCtx := &direct.MapContext{}
-	obj.Spec = direct.ValueOf(BigtableLogicalViewSpec_FromProto(mapCtx, a.actual))
+	spec := BigtableLogicalViewSpec_FromProto(mapCtx, a.actual)
+	obj.Spec = direct.ValueOf(spec)
 	if mapCtx.Err() != nil {
 		return nil, mapCtx.Err()
 	}
-	obj.Spec.ProjectRef = &refs.ProjectRef{External: a.id.Parent().ProjectID}
-	obj.Spec.Location = a.id.Parent().Location
+	obj.Spec.InstanceRef = &krm.InstanceRef{External: a.id.ParentInstanceIdString()}
+
 	uObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 	if err != nil {
 		return nil, err
@@ -259,8 +263,7 @@ func (a *LogicalViewAdapter) Delete(ctx context.Context, deleteOp *directbase.De
 	log := klog.FromContext(ctx)
 	log.V(2).Info("deleting LogicalView", "name", a.id)
 
-	req := &bigtablepb.DeleteLogicalViewRequest{Name: a.id.String()}
-	op, err := a.gcpClient.DeleteLogicalView(ctx, req)
+	err := a.gcpClient.DeleteLogicalView(ctx, a.id.ParentInstanceIdString(), a.id.ID())
 	if err != nil {
 		if direct.IsNotFound(err) {
 			// Return success if not found (assume it was already deleted).
@@ -270,10 +273,5 @@ func (a *LogicalViewAdapter) Delete(ctx context.Context, deleteOp *directbase.De
 		return false, fmt.Errorf("deleting LogicalView %s: %w", a.id, err)
 	}
 	log.V(2).Info("successfully deleted LogicalView", "name", a.id)
-
-	err = op.Wait(ctx)
-	if err != nil {
-		return false, fmt.Errorf("waiting delete LogicalView %s: %w", a.id, err)
-	}
 	return true, nil
 }
