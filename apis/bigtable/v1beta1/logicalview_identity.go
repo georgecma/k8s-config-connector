@@ -65,7 +65,6 @@ func NewLogicalViewIdentity(ctx context.Context, reader client.Reader, obj *Bigt
 	}
 
 	// Get desired ID
-	// TODO: validate that the spec _ (which is Instance matches instanceRef)
 	_, resourceID, err := ParseLogicalViewExternal(*obj.Spec.Name)
 	if resourceID == "" {
 		resourceID = obj.GetName()

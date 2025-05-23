@@ -32,7 +32,7 @@ var _ refsv1beta1.ExternalNormalizer = &LogicalViewRef{}
 // holds the GCP identifier for the KRM object.
 type LogicalViewRef struct {
 	// A reference to an externally managed BigtableLogicalView resource.
-	// Should be in the format "projects/{{projectID}}/instances/{{instanceID}}/logicalviews/{{logicalviewID}}".
+	// Should be in the format "projects/{{projectID}}/instances/{{instanceID}}/logicalViews/{{logicalViewID}}".
 	External string `json:"external,omitempty"`
 
 	// The name of a BigtableLogicalView resource.
