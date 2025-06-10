@@ -21,41 +21,42 @@ package bigtable
 
 import (
 	pb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+	krmv1alpha1 "github.com/GoogleCloudPlatform/k8s-config-connector/apis/bigtable/v1alpha1"
 	krmv1beta1 "github.com/GoogleCloudPlatform/k8s-config-connector/apis/bigtable/v1beta1"
 	"github.com/GoogleCloudPlatform/k8s-config-connector/pkg/controller/direct"
 )
 
-func BigtableLogicalViewSpec_FromProto(mapCtx *direct.MapContext, in *pb.LogicalView) *krmv1beta1.BigtableLogicalViewSpec {
+func BigtableLogicalViewSpec_FromProto(mapCtx *direct.MapContext, in *pb.LogicalView) *krmv1alpha1.BigtableLogicalViewSpec {
 	if in == nil {
 		return nil
 	}
-	out := &krmv1beta1.BigtableLogicalViewSpec{}
+	out := &krmv1alpha1.BigtableLogicalViewSpec{}
 	out.Name = direct.LazyPtr(in.Name)
 	out.Query = direct.LazyPtr(in.Query)
 	// TODO: implement this once DeletionProtection is published in adminpb.logicalview.
 	// out.DeletionProtection = direct.LazyPtr(in.DeletionProtection)
 
-	instanceIdentity, _, err := krmv1beta1.ParseLogicalViewExternal(in.Name)
+	instanceIdentity, _, err := krmv1alpha1.ParseLogicalViewExternal(in.Name)
 	if err != nil {
 		return nil
 	}
-	out.BigtableLogicalViewParent = krmv1beta1.BigtableLogicalViewParent{
+	out.BigtableLogicalViewParent = krmv1alpha1.BigtableLogicalViewParent{
 		InstanceRef: &krmv1beta1.InstanceRef{External: instanceIdentity.String(), Name: instanceIdentity.ID()},
 	}
 	return out
 }
 
-func BigtableLogicalViewObservedState_FromProto(mapCtx *direct.MapContext, in *pb.LogicalView) *krmv1beta1.BigtableLogicalViewObservedState {
+func BigtableLogicalViewObservedState_FromProto(mapCtx *direct.MapContext, in *pb.LogicalView) *krmv1alpha1.BigtableLogicalViewObservedState {
 
 	spec := BigtableLogicalViewSpec_FromProto(mapCtx, in)
-	out := &krmv1beta1.BigtableLogicalViewObservedState{
+	out := &krmv1alpha1.BigtableLogicalViewObservedState{
 		Spec: *spec,
 	}
 
 	return out
 }
 
-func BigtableLogicalViewSpec_ToProto(mapCtx *direct.MapContext, in *krmv1beta1.BigtableLogicalViewSpec) *pb.LogicalView {
+func BigtableLogicalViewSpec_ToProto(mapCtx *direct.MapContext, in *krmv1alpha1.BigtableLogicalViewSpec) *pb.LogicalView {
 	if in == nil {
 		return nil
 	}
@@ -67,7 +68,7 @@ func BigtableLogicalViewSpec_ToProto(mapCtx *direct.MapContext, in *krmv1beta1.B
 	// out.DeletionProtection = direct.LazyPtr(in.DeletionProtection)
 }
 
-func BigtableLogicalViewObservedState_ToProto(mapCtx *direct.MapContext, in *krmv1beta1.BigtableLogicalViewObservedState) *pb.LogicalView {
+func BigtableLogicalViewObservedState_ToProto(mapCtx *direct.MapContext, in *krmv1alpha1.BigtableLogicalViewObservedState) *pb.LogicalView {
 	if in == nil {
 		return nil
 	}
