@@ -65,10 +65,7 @@ type BigtableLogicalViewStatus struct {
 
 // BigtableLogicalViewObservedState is the state of the BigtableLogicalView resource as most recently observed in GCP.
 // +kcc:proto=google.bigtable.admin.v2.LogicalView
-type BigtableLogicalViewObservedState struct {
-	// The observed state of the LogicalView object.
-	Spec BigtableLogicalViewSpec `json:"spec,omitempty"`
-}
+type BigtableLogicalViewObservedState struct{}
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

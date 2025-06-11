@@ -46,16 +46,6 @@ func BigtableLogicalViewSpec_FromProto(mapCtx *direct.MapContext, in *pb.Logical
 	return out
 }
 
-func BigtableLogicalViewObservedState_FromProto(mapCtx *direct.MapContext, in *pb.LogicalView) *krmv1alpha1.BigtableLogicalViewObservedState {
-
-	spec := BigtableLogicalViewSpec_FromProto(mapCtx, in)
-	out := &krmv1alpha1.BigtableLogicalViewObservedState{
-		Spec: *spec,
-	}
-
-	return out
-}
-
 func BigtableLogicalViewSpec_ToProto(mapCtx *direct.MapContext, in *krmv1alpha1.BigtableLogicalViewSpec) *pb.LogicalView {
 	if in == nil {
 		return nil
@@ -66,12 +56,4 @@ func BigtableLogicalViewSpec_ToProto(mapCtx *direct.MapContext, in *krmv1alpha1.
 	}
 	// TODO: implement this once DeletionProtection is published in adminpb.logicalview.
 	// out.DeletionProtection = direct.LazyPtr(in.DeletionProtection)
-}
-
-func BigtableLogicalViewObservedState_ToProto(mapCtx *direct.MapContext, in *krmv1alpha1.BigtableLogicalViewObservedState) *pb.LogicalView {
-	if in == nil {
-		return nil
-	}
-	spec := &in.Spec
-	return BigtableLogicalViewSpec_ToProto(mapCtx, spec)
 }

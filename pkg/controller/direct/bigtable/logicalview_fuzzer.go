@@ -30,7 +30,6 @@ func init() {
 func bigtableLogicalViewFuzzer() fuzztesting.KRMFuzzer {
 	f := fuzztesting.NewKRMTypedFuzzer(&pb.LogicalView{},
 		BigtableLogicalViewSpec_FromProto, BigtableLogicalViewSpec_ToProto,
-		BigtableLogicalViewObservedState_FromProto, BigtableLogicalViewObservedState_ToProto,
 	)
 
 	f.SpecFields.Insert(".query")
